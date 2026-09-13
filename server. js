@@ -1,0 +1,196 @@
+const express = require("express");
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+let speaker = {
+  on: true,
+  volume: 50,
+  playbackState: "PAUSED"
+};
+
+// Simple OAuth login page
+app.get("/auth", (req, res) => {
+  const redirect = req.query.redirect_uri;
+  const state = req.query.state;
+
+  const code = "mi-speaker-code";
+
+  res.send(`
+    <h2>Mi Speaker</h2>
+    <p>Connect Mi Speaker to Google Home</p>
+
+    <a href="${redirect}?code=${code}&state=${state}">
+      <button style="font-size:20px">Connect</button>
+    </a>
+  `);
+});
+
+// OAuth token endpoint
+app.post("/token", (req, res) => {
+  res.json({
+    token_type: "Bearer",
+    access_token: "mi-speaker-access-token",
+    refresh_token: "mi-speaker-refresh-token",
+    expires_in: 3600
+  });
+});
+
+// Google Home fulfillment
+app.post("/smarthome", (req, res) => {
+
+  const input = req.body.inputs?.[0];
+
+  if (!input) {
+    return res.status(400).send("Invalid request");
+  }
+
+  const intent = input.intent;
+
+  // SYNC
+  if (intent === "action.devices.SYNC") {
+
+    return res.json({
+      requestId: req.body.requestId,
+
+      payload: {
+        agentUserId: "mi-speaker-user",
+
+        devices: [{
+          id: "mi-speaker-1",
+
+          type: "action.devices.types.SPEAKER",
+
+          traits: [
+            "action.devices.traits.OnOff",
+            "action.devices.traits.Volume",
+            "action.devices.traits.MediaState",
+            "action.devices.traits.TransportControl"
+          ],
+
+          name: {
+            name: "Mi Speaker"
+          },
+
+          willReportState: false,
+
+          attributes: {
+
+            volumeMaxLevel: 100,
+            volumeCanMuteAndUnmute: true,
+
+            supportActivityState: true,
+            supportPlaybackState: true,
+
+            transportControlSupportedCommands: [
+              "PLAY",
+              "PAUSE",
+              "NEXT",
+              "PREVIOUS"
+            ]
+          },
+
+          deviceInfo: {
+            manufacturer: "DIY",
+            model: "Mi Bluetooth Speaker Bridge",
+            hwVersion: "1",
+            swVersion: "1"
+          }
+        }]
+      }
+    });
+  }
+
+  // QUERY
+  if (intent === "action.devices.QUERY") {
+
+    return res.json({
+      requestId: req.body.requestId,
+
+      payload: {
+        devices: {
+          "mi-speaker-1": {
+            online: true,
+            on: speaker.on,
+            currentVolume: speaker.volume,
+            isMuted: speaker.volume === 0,
+            activityState: "ACTIVE",
+            playbackState: speaker.playbackState
+          }
+        }
+      }
+    });
+  }
+
+  // EXECUTE
+  if (intent === "action.devices.EXECUTE") {
+
+    const commands =
+      req.body.inputs[0].payload.commands || [];
+
+    for (const commandBlock of commands) {
+
+      for (const execution of commandBlock.execution) {
+
+        console.log("Google command:", execution);
+
+        if (execution.command === "action.devices.commands.OnOff") {
+          speaker.on = execution.params.on;
+        }
+
+        if (execution.command === "action.devices.commands.setVolume") {
+          speaker.volume = execution.params.volumeLevel;
+        }
+
+        if (execution.command === "action.devices.commands.volumeRelative") {
+          speaker.volume += execution.params.relativeSteps || 0;
+
+          speaker.volume =
+            Math.max(0, Math.min(100, speaker.volume));
+        }
+
+        if (execution.command === "action.devices.commands.mediaPause") {
+          speaker.playbackState = "PAUSED";
+        }
+
+        if (execution.command === "action.devices.commands.mediaResume") {
+          speaker.playbackState = "PLAYING";
+        }
+      }
+    }
+
+    return res.json({
+      requestId: req.body.requestId,
+
+      payload: {
+        commands: [{
+          ids: ["mi-speaker-1"],
+          status: "SUCCESS",
+          states: {
+            online: true,
+            on: speaker.on,
+            currentVolume: speaker.volume
+          }
+        }]
+      }
+    });
+  }
+
+  res.status(400).send("Unknown intent");
+});
+
+// Phone reads latest state here
+app.get("/speaker", (req, res) => {
+  res.json(speaker);
+});
+
+app.get("/", (req, res) => {
+  res.send("Mi Speaker Google Home server running");
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
