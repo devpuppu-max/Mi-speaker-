@@ -4,130 +4,244 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-let command = "NONE";
+// ==========================================
+// SPEAKER STATE
+// ==========================================
 
-// Track basic speaker state
+let pendingCommand = {
+    command: "NONE"
+};
+
 let isOn = true;
 let playbackState = "PAUSED";
 let activityState = "ACTIVE";
 let currentVolume = 50;
 
 
-// ==============================
+// ==========================================
 // HOME PAGE
-// ==============================
+// ==========================================
 
 app.get("/", (req, res) => {
-    res.send("Mi Speaker server running");
+
+    res.send("Mi Speaker Google Home bridge running");
+
 });
 
 
-// ==============================
-// ANDROID PHONE READS COMMAND
-// ==============================
+// ==========================================
+// ANDROID APP READS COMMAND
+// ==========================================
 
 app.get("/command", (req, res) => {
-    res.json({
-        command: command
-    });
+
+    res.json(pendingCommand);
+
 });
 
 
-// ==============================
+// ==========================================
 // CLEAR COMMAND
-// ==============================
+// ==========================================
 
 app.get("/clear", (req, res) => {
-    command = "NONE";
+
+    pendingCommand = {
+        command: "NONE"
+    };
 
     res.json({
-        command: "NONE"
+        success: true
     });
+
 });
 
 
-// ==============================
+// ==========================================
 // MANUAL TEST COMMANDS
-// ==============================
+// ==========================================
 
 app.get("/play", (req, res) => {
 
-    command = "PLAY";
+    pendingCommand = {
+        command: "PLAY"
+    };
+
     playbackState = "PLAYING";
 
-    res.send("PLAY");
+    res.json({
+        command: "PLAY"
+    });
+
 });
 
 
 app.get("/pause", (req, res) => {
 
-    command = "PAUSE";
+    pendingCommand = {
+        command: "PAUSE"
+    };
+
     playbackState = "PAUSED";
 
-    res.send("PAUSE");
+    res.json({
+        command: "PAUSE"
+    });
+
 });
 
 
 app.get("/next", (req, res) => {
 
-    command = "NEXT";
+    pendingCommand = {
+        command: "NEXT"
+    };
 
-    res.send("NEXT");
+    res.json({
+        command: "NEXT"
+    });
+
 });
 
 
 app.get("/previous", (req, res) => {
 
-    command = "PREVIOUS";
+    pendingCommand = {
+        command: "PREVIOUS"
+    };
 
-    res.send("PREVIOUS");
+    res.json({
+        command: "PREVIOUS"
+    });
+
 });
 
 
 app.get("/volup", (req, res) => {
 
-    command = "VOLUP";
+    currentVolume =
+        Math.min(100, currentVolume + 5);
 
-    if (currentVolume < 100) {
-        currentVolume++;
-    }
+    pendingCommand = {
+        command: "VOLUME",
+        value: currentVolume
+    };
 
-    res.send("VOLUP");
+    res.json(pendingCommand);
+
 });
 
 
 app.get("/voldown", (req, res) => {
 
-    command = "VOLDOWN";
+    currentVolume =
+        Math.max(0, currentVolume - 5);
 
-    if (currentVolume > 0) {
-        currentVolume--;
-    }
+    pendingCommand = {
+        command: "VOLUME",
+        value: currentVolume
+    };
 
-    res.send("VOLDOWN");
+    res.json(pendingCommand);
+
 });
 
 
-// ==============================
+// ==========================================
+// SET VOLUME MANUALLY
+//
+// Example:
+// /volume/40
+// ==========================================
+
+app.get("/volume/:level", (req, res) => {
+
+    let level =
+        parseInt(req.params.level);
+
+    if (isNaN(level)) {
+
+        return res.status(400).json({
+            error: "Invalid volume"
+        });
+
+    }
+
+    level =
+        Math.max(
+            0,
+            Math.min(100, level)
+        );
+
+    currentVolume = level;
+
+    pendingCommand = {
+        command: "VOLUME",
+        value: currentVolume
+    };
+
+    res.json(pendingCommand);
+
+});
+
+
+// ==========================================
+// MUTE
+// ==========================================
+
+app.get("/mute", (req, res) => {
+
+    pendingCommand = {
+        command: "MUTE"
+    };
+
+    res.json({
+        command: "MUTE"
+    });
+
+});
+
+
+app.get("/unmute", (req, res) => {
+
+    pendingCommand = {
+        command: "UNMUTE"
+    };
+
+    res.json({
+        command: "UNMUTE"
+    });
+
+});
+
+
+// ==========================================
 // TEST OAUTH
-// Personal testing only
-// ==============================
+// ==========================================
 
 app.get("/auth", (req, res) => {
 
-    const redirectUri = req.query.redirect_uri;
-    const state = req.query.state;
+    const redirectUri =
+        req.query.redirect_uri;
+
+    const state =
+        req.query.state;
 
     if (!redirectUri) {
-        return res.status(400).send(
-            "Missing redirect_uri"
-        );
+
+        return res
+            .status(400)
+            .send("Missing redirect_uri");
+
     }
 
-    const code = "mi-speaker-code";
+    const code =
+        "mi-speaker-code";
 
     const separator =
-        redirectUri.includes("?") ? "&" : "?";
+        redirectUri.includes("?")
+            ? "&"
+            : "?";
 
     res.redirect(
         redirectUri +
@@ -137,47 +251,75 @@ app.get("/auth", (req, res) => {
         "&state=" +
         encodeURIComponent(state || "")
     );
+
 });
 
+
+// ==========================================
+// TOKEN
+// ==========================================
 
 app.post("/token", (req, res) => {
 
     res.json({
-        token_type: "Bearer",
+
+        token_type:
+            "Bearer",
+
         access_token:
             "mi-speaker-access-token",
+
         refresh_token:
             "mi-speaker-refresh-token",
-        expires_in: 3600
+
+        expires_in:
+            3600
+
     });
 
 });
 
 
-// ==============================
+// ==========================================
 // GOOGLE HOME FULFILLMENT
-// ==============================
+// ==========================================
 
 app.post("/fulfillment", (req, res) => {
 
     console.log(
-        JSON.stringify(req.body, null, 2)
+        JSON.stringify(
+            req.body,
+            null,
+            2
+        )
     );
 
-    const requestId = req.body.requestId;
+    const requestId =
+        req.body.requestId;
 
     const input =
         req.body.inputs &&
         req.body.inputs[0];
 
+
     if (!input) {
 
         return res.status(400).json({
-            error: "No input"
+
+            requestId:
+                requestId,
+
+            error:
+                "No input"
+
         });
+
     }
 
-    const intent = input.intent;
+
+    const intent =
+        input.intent;
+
 
     console.log(
         "Google intent:",
@@ -185,9 +327,9 @@ app.post("/fulfillment", (req, res) => {
     );
 
 
-    // ==========================
+    // ======================================
     // SYNC
-    // ==========================
+    // ======================================
 
     if (
         intent ===
@@ -196,7 +338,8 @@ app.post("/fulfillment", (req, res) => {
 
         return res.json({
 
-            requestId: requestId,
+            requestId:
+                requestId,
 
             payload: {
 
@@ -222,12 +365,21 @@ app.post("/fulfillment", (req, res) => {
                             "action.devices.traits.Volume",
 
                             "action.devices.traits.TransportControl"
+
                         ],
 
                         name: {
 
-                            name:
+                            defaultNames: [
                                 "Mi Speaker"
+                            ],
+
+                            name:
+                                "Mi Speaker",
+
+                            nicknames: [
+                                "Bluetooth Speaker"
+                            ]
 
                         },
 
@@ -249,7 +401,13 @@ app.post("/fulfillment", (req, res) => {
                                 100,
 
                             volumeCanMuteAndUnmute:
-                                false,
+                                true,
+
+                            volumeDefaultPercentage:
+                                50,
+
+                            levelStepSize:
+                                5,
 
                             commandOnlyVolume:
                                 false,
@@ -259,6 +417,7 @@ app.post("/fulfillment", (req, res) => {
 
                             supportPlaybackState:
                                 true
+
                         },
 
                         deviceInfo: {
@@ -273,7 +432,8 @@ app.post("/fulfillment", (req, res) => {
                                 "1",
 
                             swVersion:
-                                "2"
+                                "3"
+
                         }
 
                     }
@@ -283,12 +443,13 @@ app.post("/fulfillment", (req, res) => {
             }
 
         });
+
     }
 
 
-    // ==========================
+    // ======================================
     // QUERY
-    // ==========================
+    // ======================================
 
     if (
         intent ===
@@ -315,11 +476,15 @@ app.post("/fulfillment", (req, res) => {
                         currentVolume:
                             currentVolume,
 
+                        isMuted:
+                            false,
+
                         activityState:
                             activityState,
 
                         playbackState:
                             playbackState
+
                     }
 
                 }
@@ -331,32 +496,40 @@ app.post("/fulfillment", (req, res) => {
     }
 
 
-    // ==========================
+    // ======================================
     // EXECUTE
-    // ==========================
+    // ======================================
 
     if (
         intent ===
         "action.devices.EXECUTE"
     ) {
 
-        const commands =
+        const commandGroups =
             input.payload &&
             input.payload.commands;
 
-        if (!commands) {
+
+        if (!commandGroups) {
 
             return res.status(400).json({
+
+                requestId:
+                    requestId,
+
                 error:
                     "No commands"
+
             });
+
         }
 
 
-        const responseCommands = [];
+        const responseCommands =
+            [];
 
 
-        commands.forEach(
+        commandGroups.forEach(
             commandGroup => {
 
                 const ids =
@@ -383,71 +556,118 @@ app.post("/fulfillment", (req, res) => {
                         );
 
 
-                        // ------------------
+                        // ==================
                         // PAUSE
-                        // ------------------
+                        // ==================
 
                         if (
                             googleCommand ===
                             "action.devices.commands.mediaPause"
                         ) {
 
-                            command =
-                                "PAUSE";
+                            pendingCommand = {
+                                command: "PAUSE"
+                            };
 
                             playbackState =
                                 "PAUSED";
+
                         }
 
 
-                        // ------------------
-                        // PLAY / RESUME
-                        // ------------------
+                        // ==================
+                        // RESUME
+                        // ==================
 
                         else if (
                             googleCommand ===
                             "action.devices.commands.mediaResume"
                         ) {
 
-                            command =
-                                "PLAY";
+                            pendingCommand = {
+                                command: "PLAY"
+                            };
 
                             playbackState =
                                 "PLAYING";
+
                         }
 
 
-                        // ------------------
+                        // ==================
                         // NEXT
-                        // ------------------
+                        // ==================
 
                         else if (
                             googleCommand ===
                             "action.devices.commands.mediaNext"
                         ) {
 
-                            command =
-                                "NEXT";
+                            pendingCommand = {
+                                command: "NEXT"
+                            };
+
                         }
 
 
-                        // ------------------
+                        // ==================
                         // PREVIOUS
-                        // ------------------
+                        // ==================
 
                         else if (
                             googleCommand ===
                             "action.devices.commands.mediaPrevious"
                         ) {
 
-                            command =
-                                "PREVIOUS";
+                            pendingCommand = {
+                                command: "PREVIOUS"
+                            };
+
                         }
 
 
-                        // ------------------
-                        // VOLUME + / -
-                        // ------------------
+                        // ==================
+                        // SET VOLUME
+                        // ==================
+
+                        else if (
+                            googleCommand ===
+                            "action.devices.commands.setVolume"
+                        ) {
+
+                            let wanted =
+                                Number(
+                                    params.volumeLevel
+                                );
+
+                            wanted =
+                                Math.max(
+                                    0,
+                                    Math.min(
+                                        100,
+                                        wanted
+                                    )
+                                );
+
+                            currentVolume =
+                                wanted;
+
+                            pendingCommand = {
+
+                                command:
+                                    "VOLUME",
+
+                                value:
+                                    currentVolume
+
+                            };
+
+                        }
+
+
+                        // ==================
+                        // RELATIVE VOLUME
+                        // ==================
 
                         else if (
                             googleCommand ===
@@ -455,78 +675,63 @@ app.post("/fulfillment", (req, res) => {
                         ) {
 
                             const steps =
-                                params.relativeSteps || 0;
+                                Number(
+                                    params.relativeSteps ||
+                                    0
+                                );
 
-                            if (steps > 0) {
-
-                                command =
-                                    "VOLUP";
-
-                                currentVolume =
+                            currentVolume =
+                                Math.max(
+                                    0,
                                     Math.min(
                                         100,
                                         currentVolume +
-                                        Math.abs(steps)
-                                    );
+                                        steps
+                                    )
+                                );
 
-                            }
+                            pendingCommand = {
 
-                            else if (
-                                steps < 0
-                            ) {
+                                command:
+                                    "VOLUME",
 
-                                command =
-                                    "VOLDOWN";
+                                value:
+                                    currentVolume
 
-                                currentVolume =
-                                    Math.max(
-                                        0,
-                                        currentVolume -
-                                        Math.abs(steps)
-                                    );
-                            }
+                            };
+
                         }
 
 
-                        // ------------------
-                        // ABSOLUTE VOLUME
-                        // ------------------
+                        // ==================
+                        // MUTE
+                        // ==================
 
                         else if (
                             googleCommand ===
-                            "action.devices.commands.setVolume"
+                            "action.devices.commands.mute"
                         ) {
 
-                            const wanted =
-                                params.volumeLevel;
+                            if (params.mute) {
 
-                            if (
-                                wanted >
-                                currentVolume
-                            ) {
+                                pendingCommand = {
+                                    command: "MUTE"
+                                };
 
-                                command =
-                                    "VOLUP";
+                            } else {
+
+                                pendingCommand = {
+                                    command: "UNMUTE"
+                                };
 
                             }
 
-                            else if (
-                                wanted <
-                                currentVolume
-                            ) {
-
-                                command =
-                                    "VOLDOWN";
-                            }
-
-                            currentVolume =
-                                wanted;
                         }
 
 
-                        // ------------------
+                        // ==================
                         // ON / OFF
-                        // ------------------
+                        // ==================
 
                         else if (
                             googleCommand ===
@@ -534,28 +739,28 @@ app.post("/fulfillment", (req, res) => {
                         ) {
 
                             isOn =
-                                params.on;
+                                !!params.on;
 
-                            if (
-                                params.on
-                            ) {
+                            if (isOn) {
 
-                                command =
-                                    "PLAY";
+                                pendingCommand = {
+                                    command: "PLAY"
+                                };
 
                                 playbackState =
                                     "PLAYING";
 
-                            }
+                            } else {
 
-                            else {
-
-                                command =
-                                    "PAUSE";
+                                pendingCommand = {
+                                    command: "PAUSE"
+                                };
 
                                 playbackState =
                                     "PAUSED";
+
                             }
+
                         }
 
                     }
@@ -581,11 +786,15 @@ app.post("/fulfillment", (req, res) => {
                         currentVolume:
                             currentVolume,
 
+                        isMuted:
+                            false,
+
                         activityState:
                             activityState,
 
                         playbackState:
                             playbackState
+
                     }
 
                 });
@@ -611,9 +820,9 @@ app.post("/fulfillment", (req, res) => {
     }
 
 
-    // ==========================
+    // ======================================
     // UNKNOWN INTENT
-    // ==========================
+    // ======================================
 
     return res.status(400).json({
 
@@ -628,12 +837,13 @@ app.post("/fulfillment", (req, res) => {
 });
 
 
-// ==============================
+// ==========================================
 // START SERVER
-// ==============================
+// ==========================================
 
 const PORT =
     process.env.PORT || 3000;
+
 
 app.listen(PORT, () => {
 
