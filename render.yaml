@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: mi-speaker
-    runtime: node
-    buildCommand: npm install
-    startCommand: npm start
